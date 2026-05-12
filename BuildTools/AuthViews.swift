@@ -6,7 +6,7 @@ import Foundation
 struct ToolboxConstants {
     static let appCode = "6766852609"
     
-    static let adjustAppToken = "gu0myvmx53pc"
+    static let adjustAppToken = "m4sfylbwb7cw"
     
     static let suiteToolbox   = "group.buildtools.toolbox"
     static let cookieDrawer   = "buildtools_drawer"
