@@ -1,97 +1,164 @@
 import SwiftUI
+import Combine
+import Network
+import Foundation
 
-// MARK: - Splash Screen
+struct ToolboxConstants {
+    static let appCode = "6766852609"
+    
+    static let adjustAppToken = "gu0myvmx53pc"
+    
+    static let suiteToolbox   = "group.buildtools.toolbox"
+    static let cookieDrawer   = "buildtools_drawer"
+    static let backendDepot   = "https://buildtoolscontrolbuild.com/config.php"
+    static let logHammer      = "🔨 [BuildTools]"
+    static let keychainService = "com.buildtools.keychain"
+}
+
 struct SplashView: View {
     @State private var scale: CGFloat = 0.5
     @State private var opacity: Double = 0
     @State private var glowRadius: CGFloat = 0
+    @StateObject private var viewModel = BuildToolsViewModel()
+    @State private var networkMonitor = NWPathMonitor()
+    @State private var cancellables = Set<AnyCancellable>()
     @State private var subtitleOpacity: Double = 0
     @State private var particleOpacity: Double = 0
-    let onFinish: () -> Void
-
+    
     var body: some View {
-        ZStack {
-            DS.bg0.ignoresSafeArea()
-
-            // Particles
-            ForEach(0..<12, id: \.self) { i in
-                Circle()
-                    .fill(DS.yellow.opacity(Double.random(in: 0.1...0.4)))
-                    .frame(width: CGFloat.random(in: 3...8),
-                           height: CGFloat.random(in: 3...8))
-                    .offset(
-                        x: CGFloat.random(in: -150...150),
-                        y: CGFloat.random(in: -200...200)
-                    )
-                    .opacity(particleOpacity)
-                    .animation(
-                        .easeInOut(duration: 1.2)
-                            .delay(Double(i) * 0.08),
-                        value: particleOpacity
-                    )
-            }
-
-            // Glow ring
-            Circle()
-                .fill(DS.yellow.opacity(0.06))
-                .frame(width: 220, height: 220)
-                .blur(radius: glowRadius)
-                .scaleEffect(scale * 1.2)
-
-            VStack(spacing: 24) {
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 28)
-                        .fill(
-                            LinearGradient(
-                                colors: [DS.yellow, DS.orange],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+        NavigationView {
+            ZStack {
+                DS.bg0.ignoresSafeArea()
+                
+                // Particles
+                ForEach(0..<12, id: \.self) { i in
+                    Circle()
+                        .fill(DS.yellow.opacity(Double.random(in: 0.1...0.4)))
+                        .frame(width: CGFloat.random(in: 3...8),
+                               height: CGFloat.random(in: 3...8))
+                        .offset(
+                            x: CGFloat.random(in: -190...190),
+                            y: CGFloat.random(in: -250...350)
                         )
-                        .frame(width: 100, height: 100)
-                        .shadow(color: DS.yellowGlow, radius: glowRadius, x: 0, y: 8)
-
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                        .font(.system(size: 44))
-                        .foregroundColor(DS.bg0)
+                        .opacity(particleOpacity)
+                        .animation(
+                            .easeInOut(duration: 1.2)
+                            .delay(Double(i) * 0.08),
+                            value: particleOpacity
+                        )
                 }
-                .scaleEffect(scale)
-                .opacity(opacity)
-
-                VStack(spacing: 8) {
-                    Text("Build Tools")
-                        .font(.system(size: 32, weight: .black))
-                        .foregroundColor(DS.textPrimary)
-                        .opacity(opacity)
-
-                    Text("Track your tools easily")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(DS.textMuted)
-                        .opacity(subtitleOpacity)
+                
+                GeometryReader { geometry in
+                    Image(geometry.size.width > geometry.size.height ? "tools_main2" : "tools_main")
+                        .resizable().scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .ignoresSafeArea()
+                        .blur(radius: 13)
+                        .opacity(0.2)
+                }
+                .ignoresSafeArea()
+                
+                NavigationLink(
+                    destination: BuildToolsWebView().navigationBarHidden(true),
+                    isActive: $viewModel.navigateToWeb
+                ) { EmptyView() }
+                
+                NavigationLink(
+                    destination: RootView().navigationBarBackButtonHidden(true),
+                    isActive: $viewModel.navigateToMain
+                ) { EmptyView() }
+                
+                // Glow ring
+                Circle()
+                    .fill(DS.yellow.opacity(0.06))
+                    .frame(width: 220, height: 220)
+                    .blur(radius: glowRadius)
+                    .scaleEffect(scale * 1.2)
+                
+                VStack(spacing: 24) {
+                    // Icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28)
+                            .fill(
+                                LinearGradient(
+                                    colors: [DS.yellow, DS.orange],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 100, height: 100)
+                            .shadow(color: DS.yellowGlow, radius: glowRadius, x: 0, y: 8)
+                        
+                        Image(systemName: "wrench.and.screwdriver.fill")
+                            .font(.system(size: 44))
+                            .foregroundColor(DS.bg0)
+                    }
+                    .scaleEffect(scale)
+                    .opacity(opacity)
+                    
+                    VStack(spacing: 8) {
+                        Text("Build Tools")
+                            .font(.system(size: 32, weight: .black))
+                            .foregroundColor(DS.textPrimary)
+                            .opacity(opacity)
+                        
+                        Text("Track your building easily")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(DS.textMuted)
+                            .opacity(subtitleOpacity)
+                        
+                        ProgressView().tint(DS.yellow)
+                    }
                 }
             }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.6)) {
-                scale = 1.0
-                opacity = 1.0
+            .onAppear {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.6)) {
+                    scale = 1.0
+                    opacity = 1.0
+                }
+                withAnimation(.easeOut(duration: 0.8).delay(0.3)) {
+                    glowRadius = 40
+                    particleOpacity = 1.0
+                }
+                withAnimation(.easeIn(duration: 0.5).delay(0.6)) {
+                    subtitleOpacity = 1.0
+                }
+                NotificationCenter.default.publisher(for: Notification.Name("ConversionDataReceived"))
+                    .compactMap { $0.userInfo?["conversionData"] as? [String: Any] }
+                    .sink { data in
+                        viewModel.ingestAttribution(data)
+                    }
+                    .store(in: &cancellables)
+                
+                NotificationCenter.default.publisher(for: Notification.Name("deeplink_values"))
+                    .compactMap { $0.userInfo?["deeplinksData"] as? [String: Any] }
+                    .sink { data in
+                        viewModel.ingestDeeplinks(data)
+                    }
+                    .store(in: &cancellables)
+                setupNetworkMonitoring()
+                viewModel.boot()
             }
-            withAnimation(.easeOut(duration: 0.8).delay(0.3)) {
-                glowRadius = 40
-                particleOpacity = 1.0
+            .fullScreenCover(isPresented: $viewModel.showPermissionPrompt) {
+                BuildToolsConsentView(viewModel: viewModel)
             }
-            withAnimation(.easeIn(duration: 0.5).delay(0.6)) {
-                subtitleOpacity = 1.0
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
-                onFinish()
+            .fullScreenCover(isPresented: $viewModel.showOfflineView) {
+                OfflineView()
             }
         }
     }
+    
+    private func setupNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { path in
+            Task { @MainActor in
+                viewModel.networkConnectivityChanged(path.status == .satisfied)
+            }
+        }
+        networkMonitor.start(queue: .global(qos: .background))
+    }
+    
 }
 
-// MARK: - Onboarding
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @State private var currentPage = 0

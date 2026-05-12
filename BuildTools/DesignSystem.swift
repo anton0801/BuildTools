@@ -25,7 +25,28 @@ extension Color {
     }
 }
 
-// MARK: - Design System
+struct OfflineView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                Image(geometry.size.width > geometry.size.height ? "tools_main2" : "tools_main")
+                    .resizable().scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .ignoresSafeArea()
+                    .blur(radius: 15)
+                    .opacity(0.6)
+                
+                Image("tools_alert")
+                    .resizable()
+                    .frame(width: 250, height: 220)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 struct DS {
     // Backgrounds
     static let bg0       = Color(hex: "#0F172A")

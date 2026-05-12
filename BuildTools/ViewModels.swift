@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 import UserNotifications
 
 // MARK: - AppState (EnvironmentObject)
@@ -328,5 +329,147 @@ class NotificationsManager: ObservableObject {
 
     func cancelAll() {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    }
+}
+
+
+@MainActor
+final class BuildToolsViewModel: ObservableObject {
+    
+    @Published var navigateToMain = false {
+        didSet {
+            if navigateToMain {
+                deadlineTask?.cancel()
+                uiLocked = true
+            }
+        }
+    }
+    
+    @Published var navigateToWeb = false {
+        didSet {
+            if navigateToWeb {
+                deadlineTask?.cancel()
+                uiLocked = true
+            }
+        }
+    }
+    
+    @Published var showPermissionPrompt = false
+    @Published var showOfflineView = false
+    
+    private let engine: CPSEngine
+    private var cancellables = Set<AnyCancellable>()
+    private var deadlineTask: Task<Void, Never>?
+    private var cachedDataTask: Task<Void, Never>?
+    
+    private var uiLocked: Bool = false
+    
+    init() {
+        _ = PhantomRegistry.shared
+        
+        self.engine = CPSEngine()
+        wireUp()
+    }
+    
+    deinit {
+        deadlineTask?.cancel()
+        cachedDataTask?.cancel()
+    }
+    
+    private func wireUp() {
+        engine.outcomePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] outcome in
+                self?.handleOutcome(outcome)
+            }
+            .store(in: &cancellables)
+    }
+    
+    func boot() {
+        engine.warmUp()
+        armDeadline()
+        
+        // Если есть сохранённые данные — ждём 3 сек пока не придёт Adjust,
+        // если не пришёл — постим сохранённые данные в NotificationCenter
+        // как будто Adjust прислал их заново
+//        if engine.snapshots.current.lockersFilled {
+//            armCachedDataFallback()
+//        }
+    }
+    
+    func ingestAttribution(_ data: [String: Any]) {
+        engine.ingestLockers(data)
+        engine.ignite()
+    }
+    
+    func ingestDeeplinks(_ data: [String: Any]) {
+        engine.ingestRoutes(data)
+    }
+    
+    func acceptConsent() {
+        engine.acceptConsent {
+            self.showPermissionPrompt = false
+        }
+    }
+    
+    func skipConsent() {
+        engine.deferConsent()
+        showPermissionPrompt = false
+    }
+    
+    func networkConnectivityChanged(_ connected: Bool) {
+        showOfflineView = !connected
+    }
+    
+    private func handleOutcome(_ outcome: ToolboxOutcome) {
+        guard !uiLocked else {
+            return
+        }
+        
+        switch outcome {
+        case .stillIdle:
+            break
+        case .askForConsent:
+            showPermissionPrompt = true
+        case .openDock:
+            navigateToWeb = true
+        case .fallbackHome:
+            navigateToMain = true
+        }
+    }
+    
+    private func armCachedDataFallback() {
+        cachedDataTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            
+            guard let self = self else { return }
+            guard !Task.isCancelled else { return }
+            guard !self.uiLocked else { return }
+            
+            // Берём сохранённые lockers из snapshot (уже загружены из vault в warmUp)
+            let cached = self.engine.snapshots.current.lockers
+            
+            print("\(ToolboxConstants.logHammer) Adjust not received in 3s — reposting cached lockers")
+            
+            // Постим как будто Adjust прислал — весь флоу идёт через тот же путь
+            NotificationCenter.default.post(
+                name: .init("ConversionDataReceived"),
+                object: nil,
+                userInfo: ["conversionData": cached]
+            )
+        }
+    }
+    
+    private func armDeadline() {
+        deadlineTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            
+            guard let self = self else { return }
+            
+            let shouldFire = self.engine.reportDeadlineHit()
+            if shouldFire {
+                self.handleOutcome(.fallbackHome)
+            }
+        }
     }
 }

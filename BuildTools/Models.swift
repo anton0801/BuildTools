@@ -212,3 +212,92 @@ struct AppUser: Codable {
     var role: String
     var email: String
 }
+
+struct ToolboxFrozen {
+    let lockers: [String: String]
+    let routes: [String: String]
+    let dockURL: String?
+    let dockMode: String?
+    let untouched: Bool
+    let consentArmed: Bool
+    let consentBarred: Bool
+    let consentClockedAt: Date?
+}
+
+// MARK: - Outcomes
+
+enum ToolboxOutcome {
+    case stillIdle
+    case askForConsent
+    case openDock
+    case fallbackHome
+}
+
+// MARK: - Error Context
+
+struct ErrorTag {
+    let key: String
+    let value: String
+}
+
+@resultBuilder
+struct ErrorContextBuilder {
+    static func buildBlock(_ tags: ErrorTag...) -> [ErrorTag] { Array(tags) }
+    static func buildOptional(_ tags: [ErrorTag]?) -> [ErrorTag] { tags ?? [] }
+    static func buildEither(first tags: [ErrorTag]) -> [ErrorTag] { tags }
+    static func buildEither(second tags: [ErrorTag]) -> [ErrorTag] { tags }
+}
+
+// MARK: - ToolboxError
+
+struct ToolboxError: Error {
+    
+    enum Kind: String {
+        case emptyLockers
+        case voltageInspectionFailed
+        case dockRefused
+        case payloadGarbled
+        case wireSnapped
+        case throttled
+        case watchdogExpired
+        case bootInterrupted
+    }
+    
+    let kind: Kind
+    let tags: [ErrorTag]
+    
+    init(_ kind: Kind, @ErrorContextBuilder tags: () -> [ErrorTag] = { [] }) {
+        self.kind = kind
+        self.tags = tags()
+    }
+    
+    var humanLabel: String {
+        let tagList = tags.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        return tagList.isEmpty ? kind.rawValue : "\(kind.rawValue) {\(tagList)}"
+    }
+}
+
+struct ToolboxKey {
+    static let lockers           = "bt2_lockers"
+    static let routes            = "bt2_routes"
+    static let dockURL           = "bt2_dock_url"
+    static let dockMode          = "bt2_dock_mode"
+    static let primed            = "bt2_primed"
+    static let consentArmed      = "bt2_consent_armed"
+    static let consentBarred     = "bt2_consent_barred"
+    static let consentClockedAt  = "bt2_consent_clocked_at"
+    
+    // Legacy
+    static let pushURL = "temp_url"
+    static let fcm     = "fcm_token"
+    static let push    = "push_token"
+}
+
+// MARK: - Internal Event Bus Names
+
+struct BusEvent {
+    static let lockersReceived  = Notification.Name("bt2_internal_lockers")
+    static let routesReceived   = Notification.Name("bt2_internal_routes")
+    static let pushPayloadFound = Notification.Name("bt2_internal_push")
+    static let didActivate      = Notification.Name("bt2_internal_activate")
+}

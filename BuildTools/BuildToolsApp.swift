@@ -3,10 +3,12 @@ import SwiftUI
 @main
 struct BuildToolsApp: App {
     @StateObject private var appState = AppState()
+    
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            SplashView()
                 .environmentObject(appState)
         }
     }
@@ -15,13 +17,10 @@ struct BuildToolsApp: App {
 // MARK: - Root View (routing)
 struct RootView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showSplash = true
 
     var body: some View {
         Group {
-            if showSplash {
-                SplashView { withAnimation(.easeInOut(duration: 0.4)) { showSplash = false } }
-            } else if !appState.hasCompletedOnboarding {
+            if !appState.hasCompletedOnboarding {
                 OnboardingView()
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
