@@ -20,7 +20,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         observers = [
             FirebaseObserver(),
             MessagingObserver(messagingDelegate: self, notificationDelegate: self),
-            AdjustObserver(delegate: self),
+            // AdjustObserver(delegate: self),
             BroadcastObserver()
         ]
         
@@ -107,8 +107,6 @@ extension AppDelegate: AdjustDelegate {
     func adjustAttributionChanged(_ attribution: ADJAttribution?) {
         guard let attribution else { return }
         
-        print("ADjust attribution \(attribution)")
-        
         var data: [AnyHashable: Any] = [:]
         if let network      = attribution.network      { data["network"]       = network }
         if let campaign     = attribution.campaign     { data["campaign"]      = campaign }
@@ -120,14 +118,7 @@ extension AppDelegate: AdjustDelegate {
         if let costType     = attribution.costType     { data["cost_type"]     = costType }
         data["is_organic"] = attribution.network == nil
         
-        print("ADjust attribution converted \(data)")
-        
         lockerWeaver.acceptLockers(data)
-//        NotificationCenter.default.post(
-//            name: BusEvent.lockersReceived,
-//            object: nil,
-//            userInfo: ["data": data]
-//        )
     }
     
     func adjustSessionTrackingFailed(_ sessionFailureResponseData: ADJSessionFailure?) {
@@ -201,37 +192,6 @@ final class MessagingObserver: BusObserver {
     }
 }
 
-final class AdjustObserver: BusObserver {
-    let label = "adjust"
-    
-    private weak var delegate: (NSObject & AdjustDelegate)?
-    private var token: NSObjectProtocol?
-    
-    init(delegate: NSObject & AdjustDelegate) {
-        self.delegate = delegate
-    }
-    
-    func subscribe() {
-        token = NotificationCenter.default.addObserver(
-            forName: BusEvent.didActivate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self, let delegate = self.delegate else { return }
-            
-//            let config = ADJConfig(
-//                appToken: ToolboxConstants.adjustAppToken,
-//                environment: ADJEnvironmentProduction
-//            )
-//            config?.delegate = delegate
-//            config?.logLevel = ADJLogLevel.suppress
-//            config?.attConsentWaitingInterval = 60
-//            
-//            Adjust.initSdk(config)
-        }
-    }
-}
-
 final class BroadcastObserver: BusObserver {
     let label = "broadcast"
     private var tokens: [NSObjectProtocol] = []
@@ -243,13 +203,11 @@ final class BroadcastObserver: BusObserver {
             queue: .main
         ) { note in
             guard let data = note.userInfo?["data"] as? [AnyHashable: Any] else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                NotificationCenter.default.post(
-                    name: .init("ConversionDataReceived"),
-                    object: nil,
-                    userInfo: ["conversionData": data]
-                )
-            }
+            NotificationCenter.default.post(
+                name: .init("ConversionDataReceived"),
+                object: nil,
+                userInfo: ["conversionData": data]
+            )
         }
         
         let t2 = NotificationCenter.default.addObserver(
@@ -298,11 +256,13 @@ enum AdjustStarter {
                     AdjustStarter.initialized = true
                     UserDefaults.standard.set(status.rawValue, forKey: "att_status")
                     initAdjust(delegate: delegate)
+                    NotificationCenter.default.post(name: .init("ATTConsentDone"), object: nil)
                 }
             }
         } else {
             AdjustStarter.initialized = true
             initAdjust(delegate: delegate)
+            NotificationCenter.default.post(name: .init("ATTConsentDone"), object: nil)
         }
     }
     
@@ -318,7 +278,6 @@ enum AdjustStarter {
         config.logLevel = ADJLogLevel.suppress
         
         Adjust.initSdk(config)
-        print("\(ToolboxConstants.logHammer) Adjust initSdk called after ATT")
     }
 }
 

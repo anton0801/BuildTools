@@ -361,8 +361,10 @@ final class BuildToolsViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var deadlineTask: Task<Void, Never>?
     private var cachedDataTask: Task<Void, Never>?
+    private var attObserver: NSObjectProtocol?
     
     private var uiLocked: Bool = false
+    private var adjustAttributionReceived = false
     
     init() {
         _ = PhantomRegistry.shared
@@ -389,15 +391,21 @@ final class BuildToolsViewModel: ObservableObject {
         engine.warmUp()
         armDeadline()
         
-        // Если есть сохранённые данные — ждём 3 сек пока не придёт Adjust,
-        // если не пришёл — постим сохранённые данные в NotificationCenter
-        // как будто Adjust прислал их заново
-//        if engine.snapshots.current.lockersFilled {
-//            armCachedDataFallback()
-//        }
+        attObserver = NotificationCenter.default.addObserver(
+            forName: .init("ATTConsentDone"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            guard !self.uiLocked else { return }
+            self.armCachedDataFallback()
+        }
     }
     
     func ingestAttribution(_ data: [String: Any]) {
+        adjustAttributionReceived = true
+        cachedDataTask?.cancel()
+        cachedDataTask = nil
         engine.ingestLockers(data)
         engine.ignite()
     }
@@ -439,19 +447,24 @@ final class BuildToolsViewModel: ObservableObject {
     }
     
     private func armCachedDataFallback() {
+        // Если данных нет — нечего постить, ждём Adjust
+        guard engine.snapshots.current.lockersFilled else {
+            return
+        }
+    
+        guard !adjustAttributionReceived else {
+            return
+        }
+        
         cachedDataTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
             
             guard let self = self else { return }
             guard !Task.isCancelled else { return }
             guard !self.uiLocked else { return }
             
-            // Берём сохранённые lockers из snapshot (уже загружены из vault в warmUp)
             let cached = self.engine.snapshots.current.lockers
             
-            print("\(ToolboxConstants.logHammer) Adjust not received in 3s — reposting cached lockers")
-            
-            // Постим как будто Adjust прислал — весь флоу идёт через тот же путь
             NotificationCenter.default.post(
                 name: .init("ConversionDataReceived"),
                 object: nil,
@@ -459,6 +472,7 @@ final class BuildToolsViewModel: ObservableObject {
             )
         }
     }
+    
     
     private func armDeadline() {
         deadlineTask = Task { [weak self] in
